@@ -1,6 +1,7 @@
 #include "MainComponent.h"
 
-#include "../dmx/Outputs/ArtNetOutput.h"
+#include "cppDmx/Drivers/Art-Net/ArtNetDriver.h"
+#include "cppDmx/Drivers/Art-Net/ArtNetDiscovery.h"
 
 MainComponent::MainComponent()
 {
@@ -45,7 +46,7 @@ MainComponent::MainComponent()
 MainComponent::~MainComponent()
 {
     stopTimer();
-    engine.stopSending();
+    engine.stop();
 }
 
 void MainComponent::refreshOutputs()
@@ -59,9 +60,12 @@ void MainComponent::refreshOutputs()
 
     juce::Thread::launch ([safe]
     {
-        auto found = discoverArtNetOutputs(); // static destinations
+        //auto found = cppDmx::discoverArtNetOutputs(); // static destinations
+		std::vector<DiscoveredOutput> found;
 
-        const auto nodes = discoverArtNetNodes (1000); // active ArtPoll
+        
+
+        const auto nodes = cppDmx::discoverArtNetNodes (1000); // active ArtPoll
         for (auto& node : nodes)
         {
             const std::string title = node.shortName.empty() ? "Art-Net node" : node.shortName;
@@ -72,11 +76,13 @@ void MainComponent::refreshOutputs()
 
         const int nodeCount = (int) nodes.size();
 
+        
         juce::MessageManager::callAsync ([safe, found, nodeCount]
         {
             if (auto* self = safe.getComponent())
                 self->onOutputsDiscovered (std::move (found), nodeCount);
         });
+        
     });
 }
 
@@ -89,7 +95,7 @@ void MainComponent::onOutputsDiscovered (std::vector<DiscoveredOutput> found, in
 
     int itemId = 1;                                  // ComboBox item ids are 1-based
     for (const auto& out : outputs)
-        outputBox.addItem (juce::String (out.description.c_str()), itemId++);   // c_str(): juce::String treats it as UTF-8
+        outputBox.addItem(juce::String(juce::CharPointer_UTF8(out.description.c_str())), itemId++);
 
     if (previousId > 0 && previousId <= (int) outputs.size())
         outputBox.setSelectedId (previousId, juce::dontSendNotification);
@@ -109,13 +115,14 @@ void MainComponent::toggleSending()
         stopTimer();
         engine.clear();
         engine.flushOnce();        // push the blacked-out frame so nothing stays lit
-        engine.stopSending();
+        engine.stop();
 
         sending = false;
         startButton.setButtonText ("Start sending");
         statusLabel.setText ("Stopped.", juce::dontSendNotification);
         return;
     }
+    
 
     const int sel = outputBox.getSelectedId();
     if (sel <= 0 || sel > (int) outputs.size())
@@ -126,23 +133,23 @@ void MainComponent::toggleSending()
 
     const auto& out = outputs[(size_t) (sel - 1)];
 
-    auto artnet = std::make_unique<ArtNetOutput> (out.host, out.port);
-    if (! artnet->open())
+    std::unique_ptr<cppDmx::IDmxDriver> artnet = std::make_unique<cppDmx::ArtNetDriver> (out.host);
+    if (auto err = artnet->Initialize())
     {
-        statusLabel.setText (juce::String ("Could not open socket for ") + out.host.c_str() + ".",
+        statusLabel.setText (juce::String ("Could not open socket for ") + out.description + ".",
                              juce::dontSendNotification);
         return;
     }
 
-    engine.setOutput (std::move (artnet));
-    engine.start (40.0);
+    engine.setOutputDriver (std::move(artnet));
+    engine.setRefreshRate(44);
+    engine.start();
     startTimer (60);               // refresh the sweep pattern ~16 times/sec
 
     sending = true;
     sweepStep = 0;
     startButton.setButtonText ("Stop sending");
-    statusLabel.setText (juce::String ("Sending Art-Net to ") + out.host.c_str() + ":" + juce::String (out.port)
-                             + " on universe " + juce::String ((int) universeSlider.getValue()) + ".",
+    statusLabel.setText (juce::String ("Sending Art-Net to ") + out.description + " on universe " + juce::String ((int) universeSlider.getValue()) + ".",
                          juce::dontSendNotification);
 }
 

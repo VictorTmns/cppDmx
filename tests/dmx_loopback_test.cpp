@@ -2,8 +2,8 @@
 // Build target: dmx_tests. Delete this folder (and the LoopbackOutput header and
 // the dmx_tests CMake target) to remove the test harness entirely.
 
-#include "../dmx/DmxEngine.h"
-#include "../dmx/Outputs/LoopbackOutput.h"
+#include "DmxEngine.h"
+#include "LoopbackDriver.h"
 
 #include <iostream>
 
@@ -15,11 +15,11 @@ static bool check (bool ok, const char* msg)
 
 int main()
 {
-    DmxEngine engine;
+    cppDmx::DmxEngine engine;
 
     auto loopback = std::make_unique<LoopbackOutput>();
     auto* probe   = loopback.get();          // non-owning pointer to read back
-    engine.setOutput (std::move (loopback));
+    engine.setOutputDriver (std::move (loopback));
 
     engine.setChannel (0, 1, 255);           // universe 0, channel 1
     engine.setChannel (0, 2, 128);

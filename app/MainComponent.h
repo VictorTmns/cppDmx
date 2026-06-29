@@ -2,9 +2,9 @@
 
 #include <juce_gui_extra/juce_gui_extra.h>
 
-#include "../dmx/DmxEngine.h"
-#include "../dmx/OutputDiscovery.h"
-#include "../dmx/ArtNetDiscovery.h"
+
+#include "cppDmx/DmxEngine.h"
+#include "cppDmx/Drivers/Art-Net/ArtNetDiscovery.h"
 
 /** The whole controller UI in one component:
 
@@ -16,6 +16,13 @@
         up — confirming the destination and universe are correct end to end.
 
     The component owns the DmxEngine; everything below DmxEngine is untouched. */
+struct DiscoveredOutput
+{
+    std::string description;   // what the user reads in the dropdown
+    std::string host;          // unicast or broadcast target
+    int         port = 6454;   // Art-Net default
+};
+
 class MainComponent : public juce::Component,
                       private juce::Timer
 {
@@ -33,7 +40,7 @@ private:
     void updateUniverseDecode();
     void timerCallback() override;
 
-    DmxEngine engine;
+    cppDmx::DmxEngine engine;
     std::vector<DiscoveredOutput> outputs;
 
     juce::Label       titleLabel;

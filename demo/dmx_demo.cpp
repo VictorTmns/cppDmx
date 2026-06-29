@@ -6,8 +6,8 @@
 //   Universe 1: 8 x RGB fixtures, 3 channels each, addresses 1, 4, 7, ... 22
 // (Art-Net universes count from 0.)
 
-#include "../dmx/DmxEngine.h"
-#include "../dmx/Outputs/ArtNetOutput.h"
+#include "cppDmx/DmxEngine.h"
+#include "cppDmx/Drivers/Art-Net/ArtNetDriver.h"
 
 #include <chrono>
 #include <iostream>
@@ -15,17 +15,18 @@
 
 int main()
 {
-    DmxEngine engine;
+    cppDmx::DmxEngine engine;
 
-    auto artnet = std::make_unique<ArtNetOutput> ("127.0.0.1", 6454);
-    if (! artnet->open())
+    auto artnet = std::make_unique<cppDmx::ArtNetDriver> ("127.0.0.1");
+    if (artnet->Initialize())
     {
         std::cerr << "Failed to open Art-Net socket\n";
         return 1;
     }
 
-    engine.setOutput (std::move (artnet));
-    engine.start (40.0);                       // 40 frames per second
+    engine.setOutputDriver   (std::move (artnet));
+	engine.setRefreshRate(40);              // 40 Hz refresh rate
+    engine.start ();
 
     std::cout << "Sending Art-Net to 127.0.0.1:6454. Press Ctrl+C to stop.\n";
 
@@ -51,4 +52,7 @@ int main()
         ++step;
         std::this_thread::sleep_for (std::chrono::milliseconds (150));
     }
+
+    engine.stop();
+    artnet->Shutdown();
 }
