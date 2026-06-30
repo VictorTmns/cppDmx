@@ -1,4 +1,6 @@
 #pragma once
+#include <cppDmx/cppDmx_export.h>
+
 #include <string>
 #include <array>
 #include <optional>
@@ -7,7 +9,10 @@
 
 namespace cppDmx
 {
-	class IDmxDriver
+	// Public API: consumers implement this interface to add their own output
+	// protocol (the "swap seam"). Exported so a consumer's derived driver has a
+	// proper dll-interface base in shared builds.
+	class CPPDMX_API IDmxDriver
 	{
 	public:
 		using ErrorCallback = std::function<void(const std::error_code&)>;
@@ -24,7 +29,7 @@ namespace cppDmx
 		/** Shutdown the driver*/
 		virtual std::optional<std::error_code> Shutdown() = 0;
 
-		/** 
+		/**
 		* Send DMX data, called by the engine
 		* Data will be pushed through this, the driver is responsible for sending it to the correct destination
 		* RefreshRate determines how often this is called

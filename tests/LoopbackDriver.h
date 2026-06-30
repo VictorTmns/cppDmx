@@ -1,5 +1,5 @@
 #pragma once
-#include "IDmxDriver.h"
+#include <cppDmx/IDmxDriver.h>
 
 #include <map>
 #include <algorithm>

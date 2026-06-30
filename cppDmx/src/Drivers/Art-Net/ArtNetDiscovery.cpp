@@ -1,10 +1,12 @@
-#include "ArtNetDiscovery.h"
+#include <cppDmx/Drivers/Art-Net/ArtNetDiscovery.h>
 
 #include "Helpers.h"
 
 #include <asio.hpp>
 #include <algorithm>
 #include <array>
+#include <cstring>
+#include <functional>
 #include <optional>
 
 
@@ -156,15 +158,15 @@ namespace cppDmx
 
         return nodes;
     }
-    
+
     std::vector<DiscoveredArtNetNode> discoverArtNetNodes(int timeoutMs)
     {
         asio::io_context      io;
         asio::ip::udp::socket socket(io);
-    
+
         if (!openArtNetSocket(socket))
             return {};
-    
+
         sendArtPoll(socket);
         return collectArtPollReplies(socket, io, timeoutMs);
     }

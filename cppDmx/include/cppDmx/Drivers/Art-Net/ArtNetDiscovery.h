@@ -1,4 +1,6 @@
 #pragma once
+#include <cppDmx/cppDmx_export.h>
+
 #include <vector>
 #include <string>
 
@@ -13,5 +15,5 @@ namespace cppDmx
 	};
 
 	/** Enumerate plausible DMX destinations reachable from this machine. */
-	std::vector<DiscoveredArtNetNode> discoverArtNetNodes(int timeoutMs = 1000);
+	CPPDMX_API std::vector<DiscoveredArtNetNode> discoverArtNetNodes(int timeoutMs = 1000);
 }

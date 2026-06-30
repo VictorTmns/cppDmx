@@ -1,4 +1,7 @@
 #pragma once
+#include <algorithm>
+#include <cctype>
+#include <cstdint>
 #include <string>
 
 // --- 16-bit field I/O ---------------------------------------------------
@@ -38,4 +41,3 @@ inline std::string trim(const std::string& text)
 
     return first < last ? std::string(first, last) : std::string();
 }
-

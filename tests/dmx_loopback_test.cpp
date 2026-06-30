@@ -2,7 +2,7 @@
 // Build target: dmx_tests. Delete this folder (and the LoopbackOutput header and
 // the dmx_tests CMake target) to remove the test harness entirely.
 
-#include "DmxEngine.h"
+#include <cppDmx/DmxEngine.h>
 #include "LoopbackDriver.h"
 
 #include <iostream>

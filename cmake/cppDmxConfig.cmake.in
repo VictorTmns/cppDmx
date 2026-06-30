@@ -1,0 +1,11 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# The compiled library pulls in the system threading library; consumers must be
+# able to resolve it when they link the imported target.
+find_dependency(Threads)
+
+include("${CMAKE_CURRENT_LIST_DIR}/cppDmxTargets.cmake")
+
+check_required_components(cppDmx)

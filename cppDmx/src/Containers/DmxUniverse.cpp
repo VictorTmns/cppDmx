@@ -1,6 +1,7 @@
-#include "DmxUniverse.h"
+#include <cppDmx/Containers/DmxUniverse.h>
 
 #include <algorithm>
+#include <cstring>
 
 namespace cppDmx
 {

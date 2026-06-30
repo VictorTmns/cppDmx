@@ -1,10 +1,14 @@
-#include "ArtNetDriver.h"
+#include <cppDmx/Drivers/Art-Net/ArtNetDriver.h>
+
 #include <asio.hpp>
+
+#include <algorithm>
+#include <cstring>
 
 namespace cppDmx
 {
 	// All Asio types are confined to this translation unit (pimpl), so no consumer
-	// of ArtNetOutput.h ever sees a networking-library header.
+	// of ArtNetDriver.h ever sees a networking-library header.
 	struct ArtNetDriver::AsioImpl
 	{
 		asio::io_context          io;
@@ -22,6 +26,8 @@ namespace cppDmx
 		, impl( std::make_unique<AsioImpl>() )
 	{
 	}
+
+	ArtNetDriver::~ArtNetDriver() = default;
 
 	std::optional<std::error_code> ArtNetDriver::Initialize()
 	{
@@ -47,10 +53,10 @@ namespace cppDmx
 
 		impl->target = asio::ip::udp::endpoint(address, (unsigned short)targetPort);
 		impl->opened = true;
-		
+
 		return std::optional<std::error_code>{std::nullopt};
 	}
-	
+
 	std::optional<std::error_code> ArtNetDriver::Shutdown()
 	{
 		if (!impl->opened)
@@ -65,7 +71,7 @@ namespace cppDmx
 
 		return std::optional<std::error_code>{std::nullopt};
 	}
-	
+
 	void ArtNetDriver::SendDmxData(std::uint32_t universe, const std::array<std::uint8_t, 512>& Data)
 	{
 		if (!impl->opened)
@@ -107,7 +113,7 @@ namespace cppDmx
 
 		asio::error_code ec;
 		impl->socket.send_to(asio::buffer(packet.data(), (size_t)(18 + Data.size())), impl->target, 0, ec);
-		
+
 		if (ec && errorCallback)
 			errorCallback(ec);
 	}

@@ -19,10 +19,7 @@ target_compile_definitions(dmx_gui PRIVATE
     JUCE_STANDALONE_APPLICATION=1)
 
 target_link_libraries(dmx_gui PRIVATE
-    dmx_core
+    cppDmx::cppDmx
     juce::juce_gui_extra
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags)
-
-target_include_directories(dmx_gui PRIVATE
-    ..)

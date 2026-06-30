@@ -1,4 +1,7 @@
-#include "DmxEngine.h"
+#include <cppDmx/DmxEngine.h>
+
+#include <cassert>
+#include <chrono>
 
 namespace cppDmx
 {
@@ -8,7 +11,7 @@ namespace cppDmx
 	}
 	DmxEngine::~DmxEngine()
 	{
-		_ASSERT(!isRunning);
+		assert(!isRunning);
 	}
 	void DmxEngine::setOutputDriver(std::unique_ptr<IDmxDriver> newDriver)
 	{
@@ -16,7 +19,7 @@ namespace cppDmx
 	}
 	void DmxEngine::start()
 	{
-		_ASSERT(driver);
+		assert(driver);
 
 
 		if (refreshRate > 0)
@@ -34,7 +37,7 @@ namespace cppDmx
 	}
 	void DmxEngine::stop()
 	{
-		_ASSERT(driver);
+		assert(driver);
 
 		if (isRunning)
 		{
@@ -51,14 +54,14 @@ namespace cppDmx
 
 	void DmxEngine::setChannel(int universe, int channel, std::uint8_t value)
 	{
-		_ASSERT(channel <= 512);
+		assert(channel <= 512);
 
 		universes[universe].setChannel(channel, value);
 	}
 
 	void DmxEngine::setUniverse(int universe, const std::uint8_t* data, int numChannels)
 	{
-		_ASSERT(numChannels <= 512);
+		assert(numChannels <= 512);
 
 		universes[universe].setUniverse(data, numChannels);
 	}
@@ -100,7 +103,7 @@ namespace cppDmx
 
 	void DmxEngine::flushLocked()
 	{
-		_ASSERT(driver);
+		assert(driver);
 
 		for (auto& u : universes)
 			driver->SendDmxData(u.first, u.second.getData());

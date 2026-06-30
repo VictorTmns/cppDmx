@@ -2,15 +2,17 @@
 #include <memory>
 #include <unordered_map>
 #include <mutex>
+#include <condition_variable>
 #include <thread>
 #include <functional>
 
-#include "IDmxDriver.h"
-#include "Containers/DmxUniverse.h"
+#include <cppDmx/cppDmx_export.h>
+#include <cppDmx/IDmxDriver.h>
+#include <cppDmx/Containers/DmxUniverse.h>
 
 namespace cppDmx
 {
-	class DmxEngine
+	class CPPDMX_API DmxEngine
 	{
 	public:
 		DmxEngine();
