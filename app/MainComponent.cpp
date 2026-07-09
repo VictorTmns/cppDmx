@@ -46,7 +46,7 @@ MainComponent::MainComponent()
 MainComponent::~MainComponent()
 {
     stopTimer();
-    engine.stop();
+    if (outputDriver) outputDriver->Stop();
 }
 
 void MainComponent::refreshOutputs()
@@ -114,15 +114,20 @@ void MainComponent::toggleSending()
     {
         stopTimer();
         engine.clear();
-        engine.flushOnce();        // push the blacked-out frame so nothing stays lit
-        engine.stop();
+        if (outputDriver)
+        {
+            outputDriver->Stop();          // no more automatic frames
+            outputDriver->Flush();         // push the now-cleared frame once
+            outputDriver->Shutdown();
+            outputDriver.reset();
+        }
 
         sending = false;
         startButton.setButtonText ("Start sending");
         statusLabel.setText ("Stopped.", juce::dontSendNotification);
         return;
     }
-    
+
 
     const int sel = outputBox.getSelectedId();
     if (sel <= 0 || sel > (int) outputs.size())
@@ -133,7 +138,7 @@ void MainComponent::toggleSending()
 
     const auto& out = outputs[(size_t) (sel - 1)];
 
-    std::unique_ptr<cppDmx::IDmxDriver> artnet = std::make_unique<cppDmx::ArtNetDriver> (out.host);
+    std::unique_ptr<cppDmx::IDmxDriver> artnet = std::make_unique<cppDmx::ArtNetDriver> (out.host, 44);
     if (auto err = artnet->Initialize())
     {
         statusLabel.setText (juce::String ("Could not open socket for ") + out.description + ".",
@@ -141,9 +146,8 @@ void MainComponent::toggleSending()
         return;
     }
 
-    engine.setOutputDriver (std::move(artnet));
-    engine.setRefreshRate(44);
-    engine.start();
+    outputDriver = std::move (artnet);
+    outputDriver->Start (engine);
     startTimer (60);               // refresh the sweep pattern ~16 times/sec
 
     sending = true;

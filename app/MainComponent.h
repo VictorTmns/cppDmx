@@ -4,6 +4,7 @@
 
 
 #include "cppDmx/DmxEngine.h"
+#include "cppDmx/IDmxDriver.h"
 #include "cppDmx/Drivers/Art-Net/ArtNetDiscovery.h"
 
 /** The whole controller UI in one component:
@@ -41,6 +42,7 @@ private:
     void timerCallback() override;
 
     cppDmx::DmxEngine engine;
+    std::unique_ptr<cppDmx::IDmxDriver> outputDriver;
     std::vector<DiscoveredOutput> outputs;
 
     juce::Label       titleLabel;

@@ -29,6 +29,7 @@ find_package(Threads REQUIRED)
 # --- The library ----------------------------------------------------------
 add_library(cppDmx
     src/DmxEngine.cpp
+    src/PeriodicDriverPump.cpp
     src/Containers/DmxUniverse.cpp
     "src/Drivers/Art-Net/ArtNetDriver.cpp"
     "src/Drivers/Art-Net/ArtNetDiscovery.cpp"

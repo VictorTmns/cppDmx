@@ -1,5 +1,7 @@
 #include <cppDmx/Drivers/Art-Net/ArtNetDriver.h>
 
+#include "PeriodicDriverPump.h"
+
 #include <asio.hpp>
 
 #include <algorithm>
@@ -17,19 +19,20 @@ namespace cppDmx
 		bool                      opened = false;
 	};
 
-	ArtNetDriver::ArtNetDriver(const DiscoveredArtNetNode& node)
-		: ArtNetDriver(std::move(node.ip))
+	ArtNetDriver::ArtNetDriver(const DiscoveredArtNetNode& node, int refreshRateHz)
+		: ArtNetDriver(std::move(node.ip), refreshRateHz)
 	{}
 
-	ArtNetDriver::ArtNetDriver(std::string host)
+	ArtNetDriver::ArtNetDriver(std::string host, int refreshRateHz)
 		: targetHost(std::move(host))
+		, refreshRateHz(refreshRateHz)
 		, impl( std::make_unique<AsioImpl>() )
 	{
 	}
 
 	ArtNetDriver::~ArtNetDriver() = default;
 
-	std::optional<std::error_code> ArtNetDriver::Initialize()
+	std::error_code ArtNetDriver::Initialize()
 	{
 		asio::error_code ec;
 
@@ -54,13 +57,15 @@ namespace cppDmx
 		impl->target = asio::ip::udp::endpoint(address, (unsigned short)targetPort);
 		impl->opened = true;
 
-		return std::optional<std::error_code>{std::nullopt};
+		return {};
 	}
 
-	std::optional<std::error_code> ArtNetDriver::Shutdown()
+	std::error_code ArtNetDriver::Shutdown()
 	{
+		Stop();
+
 		if (!impl->opened)
-			return std::optional<std::error_code>{std::nullopt};
+			return {};
 
 		asio::error_code ec;
 		impl->socket.close(ec);
@@ -69,29 +74,48 @@ namespace cppDmx
 
 		impl->opened = false;
 
-		return std::optional<std::error_code>{std::nullopt};
+		return {};
 	}
 
-	void ArtNetDriver::SendDmxData(std::uint32_t universe, const std::array<std::uint8_t, 512>& Data)
+	void ArtNetDriver::Start(const DmxEngine& engine)
+	{
+		pump = std::make_unique<PeriodicDriverPump>(engine,
+			[this](std::uint32_t universe, const std::array<std::uint8_t, 512>& data) { sendOneUniverse(universe, data); },
+			refreshRateHz);
+		pump->start();
+	}
+
+	void ArtNetDriver::Stop()
+	{
+		pump.reset(); // PeriodicDriverPump's destructor stops/joins
+	}
+
+	void ArtNetDriver::Flush()
+	{
+		if (pump)
+			pump->flushOnce();
+	}
+
+	void ArtNetDriver::sendOneUniverse(std::uint32_t universe, const std::array<std::uint8_t, 512>& data)
 	{
 		if (!impl->opened)
 			return;
 
 		std::array<std::uint8_t, 18 + 512> packet{};
 
-		// 0..7  : ID = "Art-Net" + null terminator
+		// 0-7  : ID = "Art-Net" + null terminator
 		std::memcpy(packet.data(), "Art-Net", 7);
 		packet[7] = 0;
 
-		// 8..9  : OpCode 0x5000 (OpDmx), transmitted little-endian (low byte first)
+		// 8-9  : OpCode 0x5000 (OpDmx), transmitted little-endian (low byte first)
 		packet[8] = 0x00;
 		packet[9] = 0x50;
 
-		// 10..11: protocol version 14, transmitted high byte first
+		// 10-11: protocol version 14, transmitted high byte first
 		packet[10] = 0x00;
 		packet[11] = 14;
 
-		// 12    : sequence (1..255; 0 disables packet resequencing)
+		// 12    : sequence (1-255; 0 disables packet resequencing)
 		packet[12] = sequence;
 		sequence = (std::uint8_t)(sequence == 255 ? 1 : sequence + 1);
 
@@ -103,16 +127,16 @@ namespace cppDmx
 		packet[14] = (std::uint8_t)(universe & 0xFF);
 		packet[15] = (std::uint8_t)((universe >> 8) & 0x7F);
 
-		// 16..17: data length, transmitted high byte first
-		packet[16] = (std::uint8_t)((Data.size() >> 8) & 0xFF);
-		packet[17] = (std::uint8_t)(Data.size() & 0xFF);
+		// 16-17: data length, transmitted high byte first
+		packet[16] = (std::uint8_t)((data.size() >> 8) & 0xFF);
+		packet[17] = (std::uint8_t)(data.size() & 0xFF);
 
-		// 18..  : channel data (channel 1 == data[0])
-		const int toCopy = std::clamp(static_cast<int>(Data.size()), 0, 512);
-		std::memcpy(packet.data() + 18, Data.data(), (size_t)toCopy);
+		// 18  : channel data (channel 1 == data[0])
+		const int toCopy = std::clamp(static_cast<int>(data.size()), 0, 512);
+		std::memcpy(packet.data() + 18, data.data(), (size_t)toCopy);
 
 		asio::error_code ec;
-		impl->socket.send_to(asio::buffer(packet.data(), (size_t)(18 + Data.size())), impl->target, 0, ec);
+		impl->socket.send_to(asio::buffer(packet.data(), (size_t)(18 + data.size())), impl->target, 0, ec);
 
 		if (ec && errorCallback)
 			errorCallback(ec);

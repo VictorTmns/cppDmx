@@ -1,8 +1,11 @@
 #pragma once
 #include <cppDmx/IDmxDriver.h>
+#include <cppDmx/DmxEngine.h>
 
 #include <map>
 #include <algorithm>
+#include <mutex>
+#include <vector>
 
 /** TEST-ONLY output. Stores the most recent frame for each universe in memory so
     a unit test can assert on exact byte values — no network, no hardware, fully
@@ -19,15 +22,24 @@ class LoopbackOutput : public cppDmx::IDmxDriver
 public:
 	~LoopbackOutput() override = default;
 
-    std::optional<std::error_code> Initialize() override { return std::nullopt; }
-    std::optional<std::error_code> Shutdown() override { return std::nullopt; }
+    std::error_code Initialize() override { return {}; }
+    std::error_code Shutdown() override { engine = nullptr; return {}; }
 
-    void SendDmxData(std::uint32_t universe, const std::array<std::uint8_t, 512>& Data) override
+    void Start(const cppDmx::DmxEngine& e) override { engine = &e; }
+    void Stop() override { engine = nullptr; }
+
+    /** Synchronously copies whatever's currently in engine into frames. */
+    void Flush() override
     {
+        if (!engine)
+            return;
+
+        std::vector<cppDmx::DmxEngine::UniverseSnapshot> snaps;
+        engine->snapshotAll(snaps);
+
         const std::lock_guard<std::mutex> sl(lock);
-        auto& buf = frames[universe];
-        buf.fill(0);
-        std::memcpy(buf.data(), Data.data(), Data.size());
+        for (auto& s : snaps)
+            frames[s.universe] = s.data;
     }
 
     std::string GetDriverName() const override { return "Loopback (test)"; }
@@ -47,6 +59,7 @@ public:
 	void SetErrorCallback(ErrorCallback callback) override {}
 
 private:
+    const cppDmx::DmxEngine*                       engine = nullptr;
     std::mutex                                     lock;
     std::map<int, std::array<std::uint8_t, 512>>   frames;
 };

@@ -24,9 +24,7 @@ int main()
         return 1;
     }
 
-    engine.setOutputDriver   (std::move (artnet));
-	engine.setRefreshRate(40);              // 40 Hz refresh rate
-    engine.start ();
+    artnet->Start (engine);                 // 40 Hz refresh rate (ArtNetDriver's default)
 
     std::cout << "Sending Art-Net to 127.0.0.1:6454. Press Ctrl+C to stop.\n";
 
@@ -53,6 +51,6 @@ int main()
         std::this_thread::sleep_for (std::chrono::milliseconds (150));
     }
 
-    engine.stop();
+    artnet->Stop();
     artnet->Shutdown();
 }
