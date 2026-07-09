@@ -33,6 +33,7 @@ add_library(cppDmx
     src/Containers/DmxUniverse.cpp
     "src/Drivers/Art-Net/ArtNetDriver.cpp"
     "src/Drivers/Art-Net/ArtNetDiscovery.cpp"
+    src/Drivers/UsbPro/UsbProDriver.cpp
 )
 add_library(cppDmx::cppDmx ALIAS cppDmx)
 

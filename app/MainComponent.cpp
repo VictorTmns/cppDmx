@@ -2,6 +2,7 @@
 
 #include "cppDmx/Drivers/Art-Net/ArtNetDriver.h"
 #include "cppDmx/Drivers/Art-Net/ArtNetDiscovery.h"
+#include "cppDmx/Drivers/UsbPro/UsbProDriver.h"
 
 MainComponent::MainComponent()
 {
@@ -9,7 +10,16 @@ MainComponent::MainComponent()
     titleLabel.setFont (juce::Font (juce::FontOptions (20.0f, juce::Font::bold)));
     addAndMakeVisible (titleLabel);
 
-    // --- Output selection -------------------------------------------------
+    // --- Driver selection ---------------------------------------------------
+    addAndMakeVisible (driverTypeLabel);
+
+    driverTypeBox.addItem ("Art-Net", 1);
+    driverTypeBox.addItem ("USB Pro", 2);
+    driverTypeBox.setSelectedId (1, juce::dontSendNotification);
+    driverTypeBox.onChange = [this] { updateDriverTypeUI(); };
+    addAndMakeVisible (driverTypeBox);
+
+    // --- Output selection (Art-Net) -----------------------------------------
     addAndMakeVisible (outputLabel);
 
     outputBox.setTextWhenNothingSelected ("Press Detect to scan for outputs");
@@ -17,6 +27,12 @@ MainComponent::MainComponent()
 
     detectButton.onClick = [this] { refreshOutputs(); };
     addAndMakeVisible (detectButton);
+
+    // --- Output selection (USB Pro) ------------------------------------------
+    addChildComponent (comPortLabel);          // hidden until USB Pro is selected
+
+    comPortEditor.setTextToShowWhenEmpty ("e.g. COM3", juce::Colours::grey);
+    addChildComponent (comPortEditor);
 
     // --- Universe selection ----------------------------------------------
     addAndMakeVisible (universeLabel);
@@ -39,8 +55,9 @@ MainComponent::MainComponent()
     statusLabel.setText ("Idle.", juce::dontSendNotification);
     addAndMakeVisible (statusLabel);
 
+    updateDriverTypeUI();
     refreshOutputs();
-    setSize (520, 320);
+    setSize (520, 356);        // +36px for the new driver-type row
 }
 
 MainComponent::~MainComponent()
@@ -129,32 +146,65 @@ void MainComponent::toggleSending()
     }
 
 
-    const int sel = outputBox.getSelectedId();
-    if (sel <= 0 || sel > (int) outputs.size())
+    std::unique_ptr<cppDmx::IDmxDriver> driver;
+    juce::String destinationDescription;
+
+    if (driverTypeBox.getSelectedId() == 2)    // USB Pro: type a COM port directly
     {
-        statusLabel.setText ("Select an output first (press Detect).", juce::dontSendNotification);
-        return;
+        const auto portName = comPortEditor.getText().trim();
+        if (portName.isEmpty())
+        {
+            statusLabel.setText ("Enter a COM port first.", juce::dontSendNotification);
+            return;
+        }
+
+        driver = std::make_unique<cppDmx::UsbProDriver> (portName.toStdString(), (std::uint32_t) universeSlider.getValue());
+        destinationDescription = portName;
+    }
+    else                                        // Art-Net: pick from Detect results
+    {
+        const int sel = outputBox.getSelectedId();
+        if (sel <= 0 || sel > (int) outputs.size())
+        {
+            statusLabel.setText ("Select an output first (press Detect).", juce::dontSendNotification);
+            return;
+        }
+
+        const auto& out = outputs[(size_t) (sel - 1)];
+        driver = std::make_unique<cppDmx::ArtNetDriver> (out.host, 44);
+        destinationDescription = juce::String (out.description);
     }
 
-    const auto& out = outputs[(size_t) (sel - 1)];
-
-    std::unique_ptr<cppDmx::IDmxDriver> artnet = std::make_unique<cppDmx::ArtNetDriver> (out.host, 44);
-    if (auto err = artnet->Initialize())
+    if (auto err = driver->Initialize())
     {
-        statusLabel.setText (juce::String ("Could not open socket for ") + out.description + ".",
+        statusLabel.setText (juce::String ("Could not open ") + destinationDescription + ".",
                              juce::dontSendNotification);
         return;
     }
 
-    outputDriver = std::move (artnet);
+    outputDriver = std::move (driver);
     outputDriver->Start (engine);
     startTimer (60);               // refresh the sweep pattern ~16 times/sec
 
     sending = true;
     sweepStep = 0;
     startButton.setButtonText ("Stop sending");
-    statusLabel.setText (juce::String ("Sending Art-Net to ") + out.description + " on universe " + juce::String ((int) universeSlider.getValue()) + ".",
+    statusLabel.setText (juce::String ("Sending to ") + destinationDescription + " on universe " + juce::String ((int) universeSlider.getValue()) + ".",
                          juce::dontSendNotification);
+}
+
+void MainComponent::updateDriverTypeUI()
+{
+    const bool isUsbPro = driverTypeBox.getSelectedId() == 2;
+
+    outputLabel.setVisible (! isUsbPro);
+    outputBox.setVisible (! isUsbPro);
+    detectButton.setVisible (! isUsbPro);
+
+    comPortLabel.setVisible (isUsbPro);
+    comPortEditor.setVisible (isUsbPro);
+
+    resized();  // the Art-Net/USB Pro row shares one slot; re-lay-out whichever is now visible
 }
 
 void MainComponent::updateUniverseDecode()
@@ -208,10 +258,24 @@ void MainComponent::resized()
 
     {
         auto r = row (28);
-        outputLabel.setBounds (r.removeFromLeft (80));
-        detectButton.setBounds (r.removeFromRight (90));
-        r.removeFromRight (8);
-        outputBox.setBounds (r);
+        driverTypeLabel.setBounds (r.removeFromLeft (80));
+        driverTypeBox.setBounds (r.removeFromLeft (160));
+    }
+
+    {
+        auto r = row (28);
+        if (driverTypeBox.getSelectedId() == 2)    // USB Pro: type a COM port directly
+        {
+            comPortLabel.setBounds (r.removeFromLeft (80));
+            comPortEditor.setBounds (r);
+        }
+        else                                        // Art-Net: pick from Detect results
+        {
+            outputLabel.setBounds (r.removeFromLeft (80));
+            detectButton.setBounds (r.removeFromRight (90));
+            r.removeFromRight (8);
+            outputBox.setBounds (r);
+        }
     }
 
     {

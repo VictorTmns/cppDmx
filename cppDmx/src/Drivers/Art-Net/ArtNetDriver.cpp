@@ -87,7 +87,8 @@ namespace cppDmx
 
 	void ArtNetDriver::Stop()
 	{
-		pump.reset(); // PeriodicDriverPump's destructor stops/joins
+		if (pump)
+			pump->stop(); // halts dispatch but keeps the pump alive so a later Flush() still works
 	}
 
 	void ArtNetDriver::Flush()

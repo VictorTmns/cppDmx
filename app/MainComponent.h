@@ -9,12 +9,17 @@
 
 /** The whole controller UI in one component:
 
-      - "Detect" enumerates reachable Art-Net destinations into the dropdown.
+      - The driver selector chooses Art-Net or USB Pro (Enttec DMX USB Pro).
+      - For Art-Net, "Detect" enumerates reachable destinations into the
+        dropdown. For USB Pro there's no discovery yet, so a COM port is
+        typed in directly.
       - The universe selector chooses the flat, 0-based universe to transmit on
-        (with a live decode into Art-Net Net / SubUni, matching ArtNetOutput).
-      - "Start sending" hands a freshly-built ArtNetOutput to the DmxEngine and
-        runs a slow RGB sweep on the chosen universe so a monitor visibly lights
-        up — confirming the destination and universe are correct end to end.
+        (with a live decode into Art-Net Net / SubUni, matching ArtNetOutput;
+        USB Pro ignores the decode since a widget only ever has one universe).
+      - "Start sending" builds the selected driver and hands it the DmxEngine,
+        then runs a slow RGB sweep on the chosen universe so a monitor visibly
+        lights up — confirming the destination and universe are correct end
+        to end.
 
     The component owns the DmxEngine; everything below DmxEngine is untouched. */
 struct DiscoveredOutput
@@ -39,6 +44,7 @@ private:
     void onOutputsDiscovered (std::vector<DiscoveredOutput> found, int nodeCount);
     void toggleSending();
     void updateUniverseDecode();
+    void updateDriverTypeUI();
     void timerCallback() override;
 
     cppDmx::DmxEngine engine;
@@ -47,9 +53,15 @@ private:
 
     juce::Label       titleLabel;
 
+    juce::Label       driverTypeLabel { {}, "Driver" };
+    juce::ComboBox    driverTypeBox;
+
     juce::Label       outputLabel { {}, "Output" };
     juce::ComboBox    outputBox;
     juce::TextButton  detectButton { "Detect" };
+
+    juce::Label       comPortLabel { {}, "COM Port" };
+    juce::TextEditor  comPortEditor;
 
     juce::Label       universeLabel { {}, "Universe" };
     juce::Slider      universeSlider { juce::Slider::IncDecButtons, juce::Slider::TextBoxLeft };

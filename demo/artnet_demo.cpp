@@ -1,5 +1,5 @@
 // Visual bring-up: sweeps a lit fixture across two universes so you can confirm
-// the whole path end-to-end in BlenderDMX. Build target: dmx_demo.
+// the whole path end-to-end in BlenderDMX. Build target: artnet_demo.
 //
 // Assumes a simple test rig patched in BlenderDMX:
 //   Universe 0: 8 x RGB fixtures, 3 channels each, addresses 1, 4, 7, ... 22
