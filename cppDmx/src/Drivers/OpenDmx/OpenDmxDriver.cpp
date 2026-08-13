@@ -1,0 +1,199 @@
+#include <cppDmx/Drivers/OpenDmx/OpenDmxDriver.h>
+
+#include "PeriodicDriverPump.h"
+
+#include <asio.hpp>
+
+// Generating the DMX BREAK is the one thing Asio's serial_port has no portable
+// API for, so we toggle the UART break condition through the native handle.
+// Both a Windows and a POSIX (Linux/macOS) implementation are provided, so the
+// library stays cross-platform.
+#ifdef _WIN32
+  #include <windows.h>
+#else
+  #include <sys/ioctl.h>
+  #include <termios.h>
+  #include <cerrno>
+#endif
+
+#include <chrono>
+#include <system_error>
+#include <thread>
+
+namespace cppDmx
+{
+	namespace
+	{
+		// DMX-512 line timing. Standard minimums are 92 us (BREAK) and 12 us
+		// (Mark After Break); we use nominal values at/above those. OS sleep
+		// granularity typically stretches them further, which a receiver
+		// tolerates — it only lowers the achievable refresh rate.
+		constexpr auto kBreakTime = std::chrono::microseconds(176);
+		constexpr auto kMabTime   = std::chrono::microseconds(12);
+
+		// Assert (on == true) or release the UART's break condition.
+		std::error_code setLineBreak(asio::serial_port& port, bool on)
+		{
+#ifdef _WIN32
+			const BOOL ok = on ? ::SetCommBreak(port.native_handle())
+							   : ::ClearCommBreak(port.native_handle());
+			if (!ok)
+				return std::error_code(static_cast<int>(::GetLastError()), std::system_category());
+			return {};
+#else
+			const int request = on ? TIOCSBRK : TIOCCLBRK;
+			if (::ioctl(port.native_handle(), request) != 0)
+				return std::error_code(errno, std::generic_category());
+			return {};
+#endif
+		}
+
+		// Block until the OS has clocked all pending bytes onto the wire, so the
+		// next BREAK does not truncate the frame we just wrote.
+		void drainPort(asio::serial_port& port)
+		{
+#ifdef _WIN32
+			::FlushFileBuffers(port.native_handle());
+#else
+			::tcdrain(port.native_handle());
+#endif
+		}
+
+		// Bounded write (same rationale as UsbProDriver): a stalled peer must not
+		// hang the pump thread or a Flush() caller. Returns operation_aborted if
+		// the write was abandoned on timeout.
+		asio::error_code writeWithTimeout(asio::io_context& io, asio::serial_port& port,
+			const std::vector<std::uint8_t>& frame, std::chrono::milliseconds timeout)
+		{
+			io.restart();
+
+			asio::error_code result;
+			asio::steady_timer timer(io);
+
+			asio::async_write(port, asio::buffer(frame), [&](const asio::error_code& ec, std::size_t)
+			{
+				result = ec;
+				timer.cancel();
+			});
+
+			timer.expires_after(timeout);
+			timer.async_wait([&](const asio::error_code& ec)
+			{
+				if (!ec)
+				{
+					asio::error_code ignored;
+					port.cancel(ignored);
+				}
+			});
+
+			io.run();
+			return result;
+		}
+	}
+
+	struct OpenDmxDriver::AsioImpl
+	{
+		asio::io_context  io;
+		asio::serial_port port{ io };
+		bool              opened = false;
+	};
+
+	OpenDmxDriver::OpenDmxDriver(std::string portName, std::uint32_t universe, int refreshRateHz)
+		: portName(std::move(portName))
+		, universe(universe)
+		, refreshRateHz(refreshRateHz)
+		, impl(std::make_unique<AsioImpl>())
+	{
+	}
+
+	OpenDmxDriver::~OpenDmxDriver() = default;
+
+	std::error_code OpenDmxDriver::Initialize()
+	{
+		asio::error_code ec;
+
+		impl->port.open(portName, ec);
+		if (ec)
+			return ec;
+
+		// The DMX-512 wire settings: 250 kbaud, 8 data bits, no parity, 2 stop bits.
+		impl->port.set_option(asio::serial_port_base::baud_rate(250000), ec);
+		if (ec)
+			return ec;
+		impl->port.set_option(asio::serial_port_base::character_size(8), ec);
+		if (ec)
+			return ec;
+		impl->port.set_option(asio::serial_port_base::parity(asio::serial_port_base::parity::none), ec);
+		if (ec)
+			return ec;
+		impl->port.set_option(asio::serial_port_base::stop_bits(asio::serial_port_base::stop_bits::two), ec);
+		if (ec)
+			return ec;
+		impl->port.set_option(asio::serial_port_base::flow_control(asio::serial_port_base::flow_control::none), ec);
+		// (no early-return: flow control can fail to apply without being a real problem)
+
+		impl->opened = true;
+		return {};
+	}
+
+	std::error_code OpenDmxDriver::Shutdown()
+	{
+		Stop();
+
+		if (!impl->opened)
+			return {};
+
+		asio::error_code ec;
+		impl->port.close(ec);
+		if (ec)
+			return ec;
+
+		impl->opened = false;
+		return {};
+	}
+
+	void OpenDmxDriver::Start(const DmxEngine& engine)
+	{
+		pump = std::make_unique<PeriodicDriverPump>(engine,
+			[this](std::uint32_t u, const std::array<std::uint8_t, 512>& data) { sendOneUniverse(u, data); },
+			refreshRateHz);
+		pump->start();
+	}
+
+	void OpenDmxDriver::Stop() { if (pump) pump->stop(); }
+
+	void OpenDmxDriver::Flush() { if (pump) pump->flushOnce(); }
+
+	void OpenDmxDriver::sendOneUniverse(std::uint32_t u, const std::array<std::uint8_t, 512>& data)
+	{
+		if (u != universe || !impl->opened)
+			return; // only one universe per physical line
+
+		const auto report = [this](const std::error_code& ec) { if (ec && errorCallback) errorCallback(ec); };
+
+		// Finish clocking out the previous frame before asserting the next break.
+		drainPort(impl->port);
+
+		// BREAK + Mark After Break: a line-level signal generated by toggling the
+		// UART break condition — deliberately NOT part of the byte stream below.
+		if (auto ec = setLineBreak(impl->port, true))  { report(ec); return; }
+		std::this_thread::sleep_for(kBreakTime);
+		if (auto ec = setLineBreak(impl->port, false)) { report(ec); return; }
+		std::this_thread::sleep_for(kMabTime);
+
+		// Then the slot data: start code 0x00 (standard dimmer data) + 512 channels.
+		const auto frame = encodeOpenDmxFrame(0x00, data);
+		report(writeWithTimeout(impl->io, impl->port, frame, std::chrono::milliseconds(200)));
+	}
+
+	bool OpenDmxDriver::IsRunning() const { return impl->opened; }
+
+	std::vector<std::uint8_t> encodeOpenDmxFrame(std::uint8_t startCode, const std::array<std::uint8_t, 512>& data)
+	{
+		std::vector<std::uint8_t> frame;
+		frame.reserve(1 + data.size());
+		frame.push_back(startCode);
+		frame.insert(frame.end(), data.begin(), data.end());
+		return frame;
+	}
+}
